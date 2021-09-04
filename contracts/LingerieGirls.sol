@@ -8,9 +8,15 @@ import "./uniswapv2/interfaces/IUniswapV2Pair.sol";
 import "./interfaces/IERC1271.sol";
 import "./interfaces/ILingerieGirls.sol";
 import "./libraries/Signature.sol";
-import "./interfaces/IMasterChef.sol";
+import "./libraries/MasterChefModule.sol";
 
-contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGIRLS"), ERC721Enumerable, ILingerieGirls {
+contract LingerieGirls is
+    Ownable,
+    ERC721("MaidCoin Lingerie Girls", "LINGERIEGIRLS"),
+    ERC721Enumerable,
+    MasterChefModule,
+    ILingerieGirls
+{
     struct LingerieGirlInfo {
         uint256 originPower;
         uint256 supportedLPTokenAmount;
@@ -35,21 +41,10 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
     mapping(uint256 => uint256) public override nonces;
     mapping(address => uint256) public override noncesForAll;
 
-    IUniswapV2Pair public immutable override lpToken;
     uint256 public override lpTokenToLingerieGirlPower = 1;
     LingerieGirlInfo[] public override lingerieGirls;
 
-    IERC20 public immutable override sushi;
-    IMasterChef public override sushiMasterChef;
-    uint256 public override pid;
-    uint256 public override sushiLastRewardBlock;
-    uint256 public override accSushiPerShare;
-    bool private initialDeposited;
-
-    constructor(IUniswapV2Pair _lpToken, IERC20 _sushi) {
-        lpToken = _lpToken;
-        sushi = _sushi;
-
+    constructor(IUniswapV2Pair _lpToken, IERC20 _sushi) MasterChefModule(_lpToken, _sushi) {
         _CACHED_CHAIN_ID = block.chainid;
         _HASHED_NAME = keccak256(bytes("MaidCoin Lingerie Girls"));
         _HASHED_VERSION = keccak256(bytes("1"));
@@ -93,7 +88,9 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
         require(powers.length == amounts, "LingerieGirls: Invalid parameters");
         uint256 from = lingerieGirls.length;
         for (uint256 i = 0; i < amounts; i += 1) {
-            lingerieGirls.push(LingerieGirlInfo({originPower: powers[i], supportedLPTokenAmount: 0, sushiRewardDebt: 0}));
+            lingerieGirls.push(
+                LingerieGirlInfo({originPower: powers[i], supportedLPTokenAmount: 0, sushiRewardDebt: 0})
+            );
             _mint(msg.sender, (i + from));
         }
     }
@@ -111,13 +108,14 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
         lingerieGirls[id].supportedLPTokenAmount = _supportedLPTokenAmount + lpTokenAmount;
         lpToken.transferFrom(msg.sender, address(this), lpTokenAmount);
 
-        uint256 _pid = pid;
+        uint256 _pid = masterChefPid;
         if (_pid > 0) {
-            uint256 _totalSupportedLPTokenAmount = sushiMasterChef.userInfo(_pid, address(this)).amount;
-            uint256 _accSushiPerShare = _depositToSushiMasterChef(_pid, lpTokenAmount, _totalSupportedLPTokenAmount);
-            uint256 pending = (_supportedLPTokenAmount * _accSushiPerShare) / 1e18 - lingerieGirls[id].sushiRewardDebt;
-            if (pending > 0) safeSushiTransfer(msg.sender, pending);
-            lingerieGirls[id].sushiRewardDebt = ((_supportedLPTokenAmount + lpTokenAmount) * _accSushiPerShare) / 1e18;
+            lingerieGirls[id].sushiRewardDebt = _depositModule(
+                _pid,
+                lpTokenAmount,
+                _supportedLPTokenAmount,
+                lingerieGirls[id].sushiRewardDebt
+            );
         }
 
         emit Support(id, lpTokenAmount);
@@ -142,13 +140,14 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
 
         lingerieGirls[id].supportedLPTokenAmount = _supportedLPTokenAmount - lpTokenAmount;
 
-        uint256 _pid = pid;
+        uint256 _pid = masterChefPid;
         if (_pid > 0) {
-            uint256 _totalSupportedLPTokenAmount = sushiMasterChef.userInfo(_pid, address(this)).amount;
-            uint256 _accSushiPerShare = _withdrawFromSushiMasterChef(_pid, lpTokenAmount, _totalSupportedLPTokenAmount);
-            uint256 pending = (_supportedLPTokenAmount * _accSushiPerShare) / 1e18 - lingerieGirls[id].sushiRewardDebt;
-            if (pending > 0) safeSushiTransfer(msg.sender, pending);
-            lingerieGirls[id].sushiRewardDebt = ((_supportedLPTokenAmount - lpTokenAmount) * _accSushiPerShare) / 1e18;
+            lingerieGirls[id].sushiRewardDebt = _withdrawModule(
+                _pid,
+                lpTokenAmount,
+                _supportedLPTokenAmount,
+                lingerieGirls[id].sushiRewardDebt
+            );
         }
 
         lpToken.transfer(msg.sender, lpTokenAmount);
@@ -157,31 +156,14 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
 
     function claimSushiReward(uint256 id) public override {
         require(ownerOf(id) == msg.sender, "LingerieGirls: Forbidden");
-        uint256 _pid = pid;
-        require(_pid > 0, "LingerieGirls: Unclaimable");
-        uint256 _supportedLPTokenAmount = lingerieGirls[id].supportedLPTokenAmount;
-
-        uint256 _totalSupportedLPTokenAmount = sushiMasterChef.userInfo(_pid, address(this)).amount;
-        uint256 _accSushiPerShare = _depositToSushiMasterChef(_pid, 0, _totalSupportedLPTokenAmount);
-        uint256 pending = (_supportedLPTokenAmount * _accSushiPerShare) / 1e18 - lingerieGirls[id].sushiRewardDebt;
-        require(pending > 0, "LingerieGirls: Nothing can be claimed");
-        safeSushiTransfer(msg.sender, pending);
-        lingerieGirls[id].sushiRewardDebt = (_supportedLPTokenAmount * _accSushiPerShare) / 1e18;
+        lingerieGirls[id].sushiRewardDebt = _claimSushiReward(
+            lingerieGirls[id].supportedLPTokenAmount,
+            lingerieGirls[id].sushiRewardDebt
+        );
     }
 
     function pendingSushiReward(uint256 id) external view override returns (uint256) {
-        uint256 _pid = pid;
-        if (_pid == 0) return 0;
-        uint256 _supportedLPTokenAmount = lingerieGirls[id].supportedLPTokenAmount;
-        uint256 _totalSupportedLPTokenAmount = sushiMasterChef.userInfo(_pid, address(this)).amount;
-
-        uint256 _accSushiPerShare = accSushiPerShare;
-        if (block.number > sushiLastRewardBlock && _totalSupportedLPTokenAmount != 0) {
-            uint256 reward = sushiMasterChef.pendingSushi(pid, address(this));
-            _accSushiPerShare += ((reward * 1e18) / _totalSupportedLPTokenAmount);
-        }
-
-        return (_supportedLPTokenAmount * _accSushiPerShare) / 1e18 - lingerieGirls[id].sushiRewardDebt;
+        return _pendingSushiReward(lingerieGirls[id].supportedLPTokenAmount, lingerieGirls[id].sushiRewardDebt);
     }
 
     function permit(
@@ -268,82 +250,5 @@ contract LingerieGirls is Ownable, ERC721("MaidCoin Lingerie Girls", "LINGERIEGI
         returns (bool)
     {
         return super.supportsInterface(interfaceId);
-    }
-
-    function setSushiMasterChef(IMasterChef _masterChef, uint256 _pid) external override onlyOwner {
-        require(address(_masterChef.poolInfo(_pid).lpToken) == address(lpToken), "LingerieGirls: Invalid pid");
-        if (!initialDeposited) {
-            initialDeposited = true;
-            lpToken.approve(address(_masterChef), type(uint256).max);
-
-            sushiMasterChef = _masterChef;
-            pid = _pid;
-            _depositToSushiMasterChef(_pid, lpToken.balanceOf(address(this)), 0);
-        } else {
-            IMasterChef oldChef = sushiMasterChef;
-            uint256 oldpid = pid;
-            _withdrawFromSushiMasterChef(oldpid, oldChef.userInfo(oldpid, address(this)).amount, 0);
-            if (_masterChef != oldChef) {
-                lpToken.approve(address(oldChef), 0);
-                lpToken.approve(address(_masterChef), type(uint256).max);
-            }
-
-            sushiMasterChef = _masterChef;
-            pid = _pid;
-            _depositToSushiMasterChef(_pid, lpToken.balanceOf(address(this)), 0);
-        }
-    }
-
-    function _depositToSushiMasterChef(
-        uint256 _pid,
-        uint256 _amount,
-        uint256 _totalSupportedLPTokenAmount
-    ) internal returns (uint256 _accSushiPerShare) {
-        return _toSushiMasterChef(true, _pid, _amount, _totalSupportedLPTokenAmount);
-    }
-
-    function _withdrawFromSushiMasterChef(
-        uint256 _pid,
-        uint256 _amount,
-        uint256 _totalSupportedLPTokenAmount
-    ) internal returns (uint256 _accSushiPerShare) {
-        return _toSushiMasterChef(false, _pid, _amount, _totalSupportedLPTokenAmount);
-    }
-
-    function _toSushiMasterChef(
-        bool deposit,
-        uint256 _pid,
-        uint256 _amount,
-        uint256 _totalSupportedLPTokenAmount
-    ) internal returns (uint256) {
-        uint256 reward;
-        if (block.number <= sushiLastRewardBlock) {
-            if (deposit) sushiMasterChef.deposit(_pid, _amount);
-            else sushiMasterChef.withdraw(_pid, _amount);
-            return accSushiPerShare;
-        } else {
-            uint256 balance0 = sushi.balanceOf(address(this));
-            if (deposit) sushiMasterChef.deposit(_pid, _amount);
-            else sushiMasterChef.withdraw(_pid, _amount);
-            uint256 balance1 = sushi.balanceOf(address(this));
-            reward = balance1 - balance0;
-        }
-        sushiLastRewardBlock = block.number;
-        if (_totalSupportedLPTokenAmount > 0 && reward > 0) {
-            uint256 _accSushiPerShare = accSushiPerShare + ((reward * 1e18) / _totalSupportedLPTokenAmount);
-            accSushiPerShare = _accSushiPerShare;
-            return _accSushiPerShare;
-        } else {
-            return accSushiPerShare;
-        }
-    }
-
-    function safeSushiTransfer(address _to, uint256 _amount) internal {
-        uint256 sushiBal = sushi.balanceOf(address(this));
-        if (_amount > sushiBal) {
-            sushi.transfer(_to, sushiBal);
-        } else {
-            sushi.transfer(_to, _amount);
-        }
     }
 }

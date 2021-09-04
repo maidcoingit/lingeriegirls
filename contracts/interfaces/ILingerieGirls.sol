@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import "../uniswapv2/interfaces/IUniswapV2Pair.sol";
-import "./IMasterChef.sol";
+import "./IMasterChefModule.sol";
 
 interface ILingerieGirls is IERC721, IERC721Metadata, IERC721Enumerable {
     event ChangeLPTokenToLingerieGirlPower(uint256 value);
@@ -22,8 +22,6 @@ interface ILingerieGirls is IERC721, IERC721Metadata, IERC721Enumerable {
 
     function noncesForAll(address owner) external view returns (uint256);
 
-    function lpToken() external view returns (IUniswapV2Pair);
-
     function lpTokenToLingerieGirlPower() external view returns (uint256);
 
     function lingerieGirls(uint256 id)
@@ -34,16 +32,6 @@ interface ILingerieGirls is IERC721, IERC721Metadata, IERC721Enumerable {
             uint256 supportedLPTokenAmount,
             uint256 sushiRewardDebt
         );
-
-    function sushi() external view returns (IERC20);
-
-    function sushiMasterChef() external view returns (IMasterChef);
-
-    function pid() external view returns (uint256);
-
-    function sushiLastRewardBlock() external view returns (uint256);
-
-    function accSushiPerShare() external view returns (uint256);
 
     function powerOf(uint256 id) external view returns (uint256);
 
@@ -81,6 +69,4 @@ interface ILingerieGirls is IERC721, IERC721Metadata, IERC721Enumerable {
         bytes32 r,
         bytes32 s
     ) external;
-
-    function setSushiMasterChef(IMasterChef _masterChef, uint256 pid) external;
 }
