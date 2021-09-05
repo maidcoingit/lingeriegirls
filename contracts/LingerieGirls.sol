@@ -44,7 +44,11 @@ contract LingerieGirls is
     uint256 public override lpTokenToLingerieGirlPower = 1;
     LingerieGirlInfo[] public override lingerieGirls;
 
-    constructor(IUniswapV2Pair _lpToken, IERC20 _sushi) MasterChefModule(_lpToken, _sushi) {
+    constructor(
+        IUniswapV2Pair _lpToken,
+        IERC20 _sushi,
+        uint256[30] memory powers
+    ) MasterChefModule(_lpToken, _sushi) {
         _CACHED_CHAIN_ID = block.chainid;
         _HASHED_NAME = keccak256(bytes("MaidCoin Lingerie Girls"));
         _HASHED_VERSION = keccak256(bytes("1"));
@@ -59,6 +63,13 @@ contract LingerieGirls is
                 address(this)
             )
         );
+
+        for (uint256 i = 0; i < 30; i += 1) {
+            lingerieGirls.push(
+                LingerieGirlInfo({originPower: powers[i], supportedLPTokenAmount: 0, sushiRewardDebt: 0})
+            );
+            _mint(msg.sender, i);
+        }
     }
 
     function _baseURI() internal pure override returns (string memory) {

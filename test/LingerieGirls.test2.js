@@ -32,13 +32,20 @@ const setupTest = async () => {
     await mine();
 
     const LingerieGirls = await ethers.getContractFactory("LingerieGirls");
-    const lgirl = await LingerieGirls.deploy(lpToken.address, sushi.address);
+    const lgirl = await LingerieGirls.deploy(
+        lpToken.address,
+        sushi.address,
+        [
+            79, 75, 67, 78, 71, 72, 66, 72, 68, 65, 76, 69, 63, 70, 69, 71, 67, 73, 70, 62, 74, 79, 65, 75, 64, 69, 73,
+            68, 77, 78
+        ]
+    );
     await mine();
 
-    await lgirl.mint(1);
-    await lgirl.mint(2);
-    await lgirl.mint(3);
-    await mine();
+    // await lgirl.mint(1);
+    // await lgirl.mint(2);
+    // await lgirl.mint(3);
+    // await mine();
 
     await lgirl.transferFrom(deployer.address, alice.address, 0);
     await lgirl.transferFrom(deployer.address, bob.address, 1);
@@ -73,6 +80,10 @@ const setupTest = async () => {
 describe("LingerieGirls interact with MasterChef", function () {
     beforeEach(async function () {
         await ethers.provider.send("hardhat_reset", []);
+    });
+
+    it.only("deploy test", async function () {
+        const { alice, bob, carol, dan, lpToken, sushi, mc, lgirl } = await setupTest();
     });
 
     it("overall test", async function () {
@@ -177,7 +188,7 @@ describe("LingerieGirls interact with MasterChef", function () {
         await expect(() => lgirl.connect(carol).claimSushiReward(2)).to.changeTokenBalance(sushi, carol, r3);
     });
 
-    it.only("overall test2", async function () {
+    it("overall test2", async function () {
         const { alice, bob, carol, dan, lpToken, sushi, mc, lgirl } = await setupTest();
         await network.provider.send("evm_setAutomine", [true]);
 
@@ -337,7 +348,7 @@ describe("LingerieGirls interact with MasterChef", function () {
         expect((await lgirl.lingerieGirls(0)).supportedLPTokenAmount).to.be.equal(201);
         const diff0 = INITIAL_REWARD_PER_BLOCK.mul(100).div(101).mul(2).div(10);
         expect(await sushi.balanceOf(alice.address)).to.be.equal(b0.add(diff0));
-        
+
         await lpToken.connect(dan).approve(mc.address, ethers.constants.MaxUint256);
         await mine();
         await network.provider.send("evm_setAutomine", [true]);
@@ -359,41 +370,43 @@ describe("LingerieGirls interact with MasterChef", function () {
         const token = await TestLPToken.deploy();
 
         const LingerieGirls = await ethers.getContractFactory("LingerieGirls");
-        const lgirl = await LingerieGirls.deploy(token.address, token.address);
+        const lgirl = await LingerieGirls.deploy(token.address, token.address, [79,75,67,78,71,72,66,72,68,65,76,69,63,70,69,71,67,73,70,62,74,79,65,75,64,69,73,68,77,78]);
         await mine();
 
         await expect(lgirl.mintBatch([1, 2, 3], 2)).to.be.revertedWith("LingerieGirls: Invalid parameters");
 
-        expect(await lgirl.totalSupply()).to.be.equal(0);
+        expect(await lgirl.totalSupply()).to.be.equal(30);
 
         await lgirl.mintBatch([2, 4, 6, 8, 10], 5);
 
-        expect(await lgirl.totalSupply()).to.be.equal(5);
+        expect(await lgirl.totalSupply()).to.be.equal(35);
 
-        expect(await lgirl.powerOf(0)).to.be.equal(2);
-        expect(await lgirl.powerOf(1)).to.be.equal(4);
-        expect(await lgirl.powerOf(2)).to.be.equal(6);
-        expect(await lgirl.powerOf(3)).to.be.equal(8);
-        expect(await lgirl.powerOf(4)).to.be.equal(10);
+        expect(await lgirl.powerOf(30)).to.be.equal(2);
+        expect(await lgirl.powerOf(31)).to.be.equal(4);
+        expect(await lgirl.powerOf(32)).to.be.equal(6);
+        expect(await lgirl.powerOf(33)).to.be.equal(8);
+        expect(await lgirl.powerOf(34)).to.be.equal(10);
     });
 
     it("mintBatch test2", async function () {
         const { lgirl } = await setupTest();
 
-        expect(await lgirl.totalSupply()).to.be.equal(3);
+        expect(await lgirl.totalSupply()).to.be.equal(30);
 
         await lgirl.mintBatch([12, 14, 16, 18, 10], 5);
 
-        expect(await lgirl.totalSupply()).to.be.equal(8);
+        expect(await lgirl.totalSupply()).to.be.equal(35);
 
-        expect(await lgirl.powerOf(0)).to.be.equal(1);
-        expect(await lgirl.powerOf(1)).to.be.equal(2);
-        expect(await lgirl.powerOf(2)).to.be.equal(3);
-
-        expect(await lgirl.powerOf(3)).to.be.equal(12);
-        expect(await lgirl.powerOf(4)).to.be.equal(14);
-        expect(await lgirl.powerOf(5)).to.be.equal(16);
-        expect(await lgirl.powerOf(6)).to.be.equal(18);
-        expect(await lgirl.powerOf(7)).to.be.equal(10);
+        expect(await lgirl.powerOf(0)).to.be.equal(79);
+        expect(await lgirl.powerOf(1)).to.be.equal(75);
+        expect(await lgirl.powerOf(2)).to.be.equal(67);
+        
+        expect(await lgirl.powerOf(28)).to.be.equal(77);
+        expect(await lgirl.powerOf(29)).to.be.equal(78);
+        expect(await lgirl.powerOf(30)).to.be.equal(12);
+        expect(await lgirl.powerOf(31)).to.be.equal(14);
+        expect(await lgirl.powerOf(32)).to.be.equal(16);
+        expect(await lgirl.powerOf(33)).to.be.equal(18);
+        expect(await lgirl.powerOf(34)).to.be.equal(10);
     });
 });
