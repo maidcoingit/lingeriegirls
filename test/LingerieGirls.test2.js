@@ -21,7 +21,7 @@ const setupTest = async () => {
     await lpToken.mint(alice.address, tokenAmount(1000));
     await lpToken.mint(bob.address, tokenAmount(1000));
     await lpToken.mint(carol.address, tokenAmount(1000));
-    await lpToken.mint(dan.address, tokenAmount(1000));
+    await lpToken.mint(dan.address, tokenAmount(10000));
 
     const MockSushiToken = await ethers.getContractFactory("MockSushiToken");
     const sushi = await MockSushiToken.deploy();
@@ -177,8 +177,8 @@ describe("LingerieGirls interact with MasterChef", function () {
         await expect(() => lgirl.connect(carol).claimSushiReward(2)).to.changeTokenBalance(sushi, carol, r3);
     });
 
-    it("overall test2", async function () {
-        const { alice, bob, carol, lpToken, sushi, mc, lgirl } = await setupTest();
+    it.only("overall test2", async function () {
+        const { alice, bob, carol, dan, lpToken, sushi, mc, lgirl } = await setupTest();
         await network.provider.send("evm_setAutomine", [true]);
 
         await lgirl.connect(alice).support(0, 100);
@@ -325,6 +325,33 @@ describe("LingerieGirls interact with MasterChef", function () {
         await expect(() => lgirl.connect(alice).claimSushiReward(0)).to.changeTokenBalance(sushi, alice, r4);
         await expect(() => lgirl.connect(bob).claimSushiReward(1)).to.changeTokenBalance(sushi, bob, r5);
         await expect(() => lgirl.connect(carol).claimSushiReward(2)).to.changeTokenBalance(sushi, carol, r6);
+
+        //additional
+        await mc.set(3, 100, true);
+        const b0 = await sushi.balanceOf(alice.address);
+        await network.provider.send("evm_setAutomine", [false]);
+        await lgirl.connect(alice).desupport(0, 1);
+        await lgirl.connect(alice).claimSushiReward(0);
+        await lgirl.connect(alice).support(0, 2);
+        await mine();
+        expect((await lgirl.lingerieGirls(0)).supportedLPTokenAmount).to.be.equal(201);
+        const diff0 = INITIAL_REWARD_PER_BLOCK.mul(100).div(101).mul(2).div(10);
+        expect(await sushi.balanceOf(alice.address)).to.be.equal(b0.add(diff0));
+        
+        await lpToken.connect(dan).approve(mc.address, ethers.constants.MaxUint256);
+        await mine();
+        await network.provider.send("evm_setAutomine", [true]);
+        await mc.connect(dan).deposit(3, (await mc.userInfo(3, lgirl.address)).amount);
+        expect((await mc.userInfo(3, lgirl.address)).amount).to.be.equal((await mc.userInfo(3, dan.address)).amount);
+        let sushiPerBlock = INITIAL_REWARD_PER_BLOCK.mul(100).div(101);
+        const diff1 = sushiPerBlock.mul(2).mul(201).div(1001).add(sushiPerBlock.mul(201).div(2002));
+        await expect(() => lgirl.connect(alice).claimSushiReward(0)).to.changeTokenBalance(sushi, alice, diff1.add(1)); //due to solidity math
+
+        await network.provider.send("evm_setAutomine", [false]);
+        await mc.connect(dan).deposit(3, (await mc.userInfo(3, lgirl.address)).amount);
+        await lgirl.connect(alice).claimSushiReward(0);
+        await expect(() => mine()).to.changeTokenBalance(sushi, alice, sushiPerBlock.mul(201).div(2002));
+        await mine();
     });
 
     it("mintBatch test1", async function () {
